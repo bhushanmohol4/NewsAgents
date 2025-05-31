@@ -1,7 +1,7 @@
-from crewai import Agent, LLM
+from crewai import Agent
 from crewai_tools import ScrapeWebsiteTool
-from crewai.project import agent
 from TTS.Service import ttsService
+from Tools.ReadScriptTool import ReadScriptTool
 
 class agentService():
     def __init__(self, website_url, llm):
@@ -17,7 +17,8 @@ class agentService():
                 "You ensure the scraped content is clean, relevant, and easy to process, always ensuring it is in English."
             ),
             tools = [self.website_scraper_tool],
-            llm = self.llm
+            llm = self.llm,
+            verbose = True
         )
 
         return website_scraper
@@ -32,7 +33,8 @@ class agentService():
                 "Concentrate only on the major topic and produce a detailed and in-depth report focusing on all relevant aspects. "
                 "If there are multiple topics, generate a report that provides key insights and essential highlights for each one in numbered sections."
             ),
-            llm = self.llm
+            llm = self.llm,
+            verbose = True
         )
 
         return reporting_analyst
@@ -42,23 +44,37 @@ class agentService():
             role = "Podcast Script Writer",
             goal = "Convert the processed content into a structured podcast conversation between two speakers in English.",
             backstory = (
-                "You're a skilled content creator with experience in writing engaging and natural podcast dialogues in English."
+                "You're a skilled content creator with experience in writing engaging and natural podcast dialogues in English. "
+                "You excel at creating natural-sounding conversations that maintain the original content's meaning while being engaging for listeners."
             ),
-            llm = self.llm
+            llm = self.llm,
+            verbose = True
         )
 
         return podcast_writer
+    
+    def podcast_cleaner(self):
+        podcast_cleaner = Agent(
+            role = "Podcast Script Cleaner",
+            goal = "Clean the json file to ensure it is in the correct format.",
+            backstory = "A data processing expert who ensures JSON files are properly formatted.",
+            tools = [ReadScriptTool()],
+            llm = None,
+            function_calling_llm = self.llm,
+            verbose = True
+        )
+
+        return podcast_cleaner
 
     def audio_generator(self):
         audio_generator = Agent(
             role = "Audio Producer",
-            goal = "Generate an mp3 audio file from the podcast script in English.",
-            backstory = (
-                "You're an expert in text-to-speech synthesis and audio production. "
-                "You ensure that the podcast narration is of high quality and is produced in English."
-            ),
+            goal = "Generate a high-quality audio file from the podcast script in English.",
+            backstory = "An audio processing expert who converts text to speech.",
             tools = [ttsService()],
-            llm = self.llm
+            llm = None,
+            function_calling_llm = self.llm,
+            verbose = True
         )
 
         return audio_generator

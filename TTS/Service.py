@@ -5,50 +5,70 @@ from crewai.tools import BaseTool
 from pydantic import BaseModel, Field
 from typing import Type, List
 import time
+import os
+import json
 
-# Sample script
-script = [
-        {"speaker": "host", "text": "Welcome to our podcast. I'm your host, Sarah."},
-        {"speaker": "guest", "text": "Thank you for having me, Sarah. It's great to be here."},
-        {"speaker": "host", "text": "Let’s dive into today’s topic."}
-    ]
-
-class TextToSpeechToolInput(BaseModel):
-    """Input schema for TextToSpeechTool."""
-    script: List[str] = Field(
-        ...,
-        description="List of dialogues (strings) for text-to-speech conversion."
-    )
+class TTSInput(BaseModel):
+        input_file: str = Field(
+            ...,
+            description="Path to the JSON script file (e.g., 'output/podcast_script.json')"
+        )
+        output_file: str = Field(
+            ...,
+            description="Path to save the generated audio file (e.g., 'TTS/Recordings/podcast.wav')"
+        )
 
 class ttsService(BaseTool):
     name: str = "Text-to-Speech Tool to generate audio from text"
     description: str = "Generates a mono-speaker podcast audio file from a list of dialogues."
-    args_schema: Type[BaseModel] = TextToSpeechToolInput
+    args_schema: Type[BaseModel] = TTSInput
 
-    def _run(self, script: List[str] = script):
-        # Instantiate the TTS service
-        tts = BarkTTS()
+    def _run(self, input_file: str, output_file: str):
+        try:
+            # Ensure Recordings directory exists
+            os.makedirs("TTS/Recordings", exist_ok=True)
+            
+            # Instantiate the TTS service
+            tts = BarkTTS()
 
-        voice_presets = {
-            "host": "v2/en_speaker_6",
-            "guest": "v2/en_speaker_9"
-        }
+            voice_presets = {
+                "host": "v2/en_speaker_6",
+                "guest": "v2/en_speaker_9"
+            }
 
-        # Generate audio segments
-        final_audio = []
-        for line in script:
-            speaker = line["speaker"]
-            text = line["text"]
-            voice = voice_presets[speaker]
+            with open(input_file, 'r', encoding='utf-8') as f:
+                script = json.load(f)
 
-            sr, audio = tts.long_form_synthesize(text, voice)
-            final_audio.append(audio)
+            # Generate audio segments
+            final_audio = []
+            for line in script:
+                speaker = line["speaker"].lower()  # Convert to lowercase for consistency
+                if speaker not in voice_presets:
+                    raise ValueError(f"Unknown speaker: {speaker}. Must be one of: {list(voice_presets.keys())}")
+                
+                text = line["text"]
+                voice = voice_presets[speaker]
 
-            final_audio.append(np.zeros(int(0.65 * sr)))  # silence
+                sr, audio = tts.long_form_synthesize(text, voice)
+                final_audio.append(audio)
 
-        # Concatenate and save final podcast audio
-        podcast_audio = np.concatenate(final_audio)
-        podcast_file = f"TTS/Recordings/podcast.wav"
-        sf.write("Recordings/podcast.wav", podcast_audio, sr)
+                final_audio.append(np.zeros(int(0.65 * sr)))  # silence
 
-        return podcast_file
+            # Concatenate and save final podcast audio
+            podcast_audio = np.concatenate(final_audio)
+
+            # Normalize audio to prevent clipping
+            max_value = np.max(np.abs(podcast_audio))
+            if max_value > 1.0:
+                podcast_audio = podcast_audio / max_value
+
+            podcast_file = "output/Recordings/podcast.wav"
+            sf.write(podcast_file, podcast_audio, sr)
+
+            if not os.path.exists(podcast_file):
+                raise FileNotFoundError(f"Failed to save podcast file at {podcast_file}")
+
+            return podcast_audio
+            
+        except Exception as e:
+            raise Exception(f"Error in TTS service: {str(e)}")
