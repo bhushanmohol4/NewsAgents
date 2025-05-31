@@ -57,7 +57,9 @@ class taskService():
             description = (
                 "Clean and validate the podcast script JSON file. "
                 "Read the podcast script from output/podcast_script_raw.json. "
-                "Use the ReadScriptTool to clean the json file and save it to output/podcast_script.json"
+                "Use the ReadScriptTool to clean the json file and save it to output/podcast_script.json. "
+                "The format for the clean JSON list should include a 'speaker' and 'text' fields for each item. "
+                "Example format: [{\"speaker\": \"Host\", \"text\": \"Welcome to Daily News.\"}, {\"speaker\": \"Guest\", \"text\": \"Thank you for having me.\"}]"
             ),
             expected_output = "A clean JSON array containing the podcast script with speaker and text fields.",
             agent = self.AgentService.podcast_cleaner(),
@@ -65,18 +67,3 @@ class taskService():
         )
 
         return clean_script_task
-
-    def fetch_audio_task(self):
-        audio_task = Task(
-            description=(
-                "Generate audio from the podcast script using TTS. "
-                "Read the script from output/podcast_script.json and "
-                "save the generated audio to output/Recordings/podcast.wav. "
-                "Use the ttsService tool directly with the input and output file paths."
-            ),
-            expected_output = "output/Recordings/podcast.wav",
-            agent = self.AgentService.audio_generator(),
-            output_file = "output/Recordings/podcast.wav"
-        )
-
-        return audio_task

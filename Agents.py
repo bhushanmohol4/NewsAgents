@@ -1,6 +1,5 @@
 from crewai import Agent
 from crewai_tools import ScrapeWebsiteTool
-from TTS.Service import ttsService
 from Tools.ReadScriptTool import ReadScriptTool
 
 class agentService():
@@ -59,22 +58,9 @@ class agentService():
             goal = "Clean the json file to ensure it is in the correct format.",
             backstory = "A data processing expert who ensures JSON files are properly formatted.",
             tools = [ReadScriptTool()],
-            llm = None,
+            llm = self.llm,
             function_calling_llm = self.llm,
             verbose = True
         )
 
         return podcast_cleaner
-
-    def audio_generator(self):
-        audio_generator = Agent(
-            role = "Audio Producer",
-            goal = "Generate a high-quality audio file from the podcast script in English.",
-            backstory = "An audio processing expert who converts text to speech.",
-            tools = [ttsService()],
-            llm = None,
-            function_calling_llm = self.llm,
-            verbose = True
-        )
-
-        return audio_generator

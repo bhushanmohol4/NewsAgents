@@ -5,6 +5,7 @@ import json
 import streamlit as st
 from dotenv import load_dotenv
 from Logging.Logger import logger
+from TTS.Service import TTSService
 
 load_dotenv()
 
@@ -57,91 +58,59 @@ if st.button("Generate Podcast"):
 
             # Website scraping
             with st.spinner("Scraping the website. Please wait..."):
-                logger.info("Scraping the website")
+                logger.info("Main.py: Scraping the website")
                 content_crew = CrewService.fetch_content_crew()
                 content_result = content_crew.kickoff(inputs={"website_url": website_url})
-                st.session_state.progress = 30
+                st.session_state.progress = 35
                 progress_bar.progress(st.session_state.progress)
                 
                 if not os.path.exists("output/scraped_news.txt"):
-                    logger.error("Failed to generate scraped news file")
+                    logger.error("Main.py: Failed to generate scraped news file")
                     raise FileNotFoundError("Failed to generate scraped news file")
                 
                 st.success("News content successfully scraped and processed.")
-                logger.info("News content successfully scraped and processed.")
+                logger.info("Main.py: News content successfully scraped and processed.")
 
             # Podcast script generation
             with st.spinner("Generating podcast script..."):
-                logger.info("Generating podcast script")
+                logger.info("Main.py: Generating podcast script")
                 podcast_script_crew = CrewService.fetch_podcast_script_crew()
                 podcast_script_result = podcast_script_crew.kickoff(inputs={"content": str(content_result)})
-                st.session_state.progress = 60
+                st.session_state.progress = 70
                 progress_bar.progress(st.session_state.progress)
 
                 # Verify JSON script was created
                 if not os.path.exists("output/podcast_script.json"):
-                    logger.error("Failed to generate podcast script")
+                    logger.error("Main.py: Failed to generate podcast script")
                     raise FileNotFoundError("Failed to generate podcast script")
                 
                 # Validate JSON format
                 with open("output/podcast_script.json", 'r', encoding='utf-8') as f:
                     script_data = json.load(f)
                     if not isinstance(script_data, list) or not all(isinstance(item, dict) and 'speaker' in item and 'text' in item for item in script_data):
-                        logger.error("Invalid podcast script format")
+                        logger.error("Main.py: Invalid podcast script format")
                         raise ValueError("Invalid podcast script format")
 
                 st.success("Podcast script generated successfully.")
 
             # Podcast audio generation
             with st.spinner("Generating podcast audio..."):
-                logger.info("Generating podcast audio")
-                podcast_audio_crew = CrewService.fetch_podcast_audio_crew()
-                podcast_audio_result = podcast_audio_crew.kickoff(inputs={"script": str(podcast_script_result)})
-                st.session_state.progress = 90
+                logger.info("Main.py: Generating podcast audio")
+                tts_service = TTSService()
+                audio_file = tts_service.generate_audio(
+                    input_file="output/podcast_script.json",
+                    output_file="output/Recordings/podcast.wav"
+                )
+                st.session_state.progress = 100
                 progress_bar.progress(st.session_state.progress)
                 
-            # Audio file handling
-            with st.spinner("Processing audio file..."):
-                podcast_dir = "output/Recordings"
-                latest_podcast_file = max(
-                    (os.path.join(podcast_dir, f) for f in os.listdir(podcast_dir) if f.endswith(".wav")),
-                    key=os.path.getmtime,
-                    default=None
-                )
+                if not os.path.exists(audio_file):
+                    logger.error("Main.py: Failed to generate podcast audio")
+                    raise FileNotFoundError("Failed to generate podcast audio")
+                
+                st.success("Podcast audio generated successfully!")
+                logger.info("-----Podcast Generation Process Successfull-----")
 
-                if latest_podcast_file and os.path.exists(latest_podcast_file):
-                    st.session_state.progress = 100
-                    progress_bar.progress(st.session_state.progress)
-                    
-                    # Display audio player
-                    st.audio(latest_podcast_file, format="audio/wav")
-                    
-                    # Add download button
-                    with open(latest_podcast_file, "rb") as f:
-                        st.download_button(
-                            label="Download Podcast",
-                            data=f.read(),
-                            file_name=os.path.basename(latest_podcast_file),
-                            mime="audio/wav"
-                        )
-                    
-                    # Display script preview
-                    with st.expander("View Podcast Script"):
-                        for line in script_data:
-                            st.markdown(f"**{line['speaker']}**: {line['text']}")
-                else:
-                    raise FileNotFoundError("No podcast file found. Please ensure the podcast generation was successful.")
-
-        except FileNotFoundError as e:
-            st.error(f"File Error: {str(e)}")
-        except json.JSONDecodeError:
-            st.error("Error: Invalid JSON format in podcast script")
-        except ValueError as e:
-            st.error(f"Validation Error: {str(e)}")
         except Exception as e:
+            logger.error(f"Main.py: Error in podcast generation: {str(e)}")
             st.error(f"An error occurred: {str(e)}")
-        finally:
-            # Reset progress if there was an error
-            if st.session_state.progress != 100:
-                st.session_state.progress = 0
-                progress_bar.progress(st.session_state.progress)

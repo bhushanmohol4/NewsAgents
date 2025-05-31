@@ -3,16 +3,19 @@ from crewai.project import crew
 from Agents import *
 from Tasks import *
 import os
+from datetime import datetime
 
 class crewService():
     def __init__(self, website_url, llm):
         self.llm = llm
         self.AgentService = agentService(website_url, llm)
         self.TaskService = taskService(website_url, llm)
-        
+        today = datetime.now().strftime('%Y-%m-%d')
+        self.crewaiLogDir = os.path.join("Logging/Logs", f'crewai_{today}')
+
         # Ensure output directories exist
-        os.makedirs("output", exist_ok=True)
-        os.makedirs("output/Recordings", exist_ok=True)
+        os.makedirs("output", exist_ok = True)
+        os.makedirs("output/Recordings", exist_ok = True)
 
     def fetch_content_crew(self):
         content_crew = Crew(
@@ -25,7 +28,8 @@ class crewService():
             process = Process.sequential,
             planning = True,
             planning_llm = self.llm,
-            max_rpm = 10
+            max_rpm = 10,
+
         )
 
         return content_crew
@@ -43,21 +47,10 @@ class crewService():
             cache = True,
             verbose = True,
             process = Process.sequential,
-            planning = False,
-            max_rpm = 10
+            planning = True,
+            planning_llm = self.llm,
+            max_rpm = 10,
+            output_log_file = self.crewaiLogDir
         )
 
         return podcast_script_crew
-    
-    def fetch_podcast_audio_crew(self):
-        podcast_audio_crew = Crew(
-            agents = [self.AgentService.audio_generator()],
-            tasks = [self.TaskService.fetch_audio_task()],
-            cache = True,
-            verbose = True,
-            process = Process.sequential,
-            planning = False,
-            max_rpm = 10
-        )
-
-        return podcast_audio_crew

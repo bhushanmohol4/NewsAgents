@@ -1,74 +1,105 @@
 import soundfile as sf
 from TTS.Bark import BarkTTS
 import numpy as np
-from crewai.tools import BaseTool
-from pydantic import BaseModel, Field
-from typing import Type, List
-import time
-import os
 import json
+import os
+from Logging.Logger import logger
 
-class TTSInput(BaseModel):
-        input_file: str = Field(
-            ...,
-            description="Path to the JSON script file (e.g., 'output/podcast_script.json')"
-        )
-        output_file: str = Field(
-            ...,
-            description="Path to save the generated audio file (e.g., 'TTS/Recordings/podcast.wav')"
-        )
+class TTSService:
+    def __init__(self):
+        self.tts = BarkTTS()
+        self.voice_presets = {
+            "host": "v2/en_speaker_6",
+            "guest": "v2/en_speaker_9"
+        }
+        self.temp_dir = "TTS/temp"
+        os.makedirs(self.temp_dir, exist_ok=True)
 
-class ttsService(BaseTool):
-    name: str = "Text-to-Speech Tool to generate audio from text"
-    description: str = "Generates a mono-speaker podcast audio file from a list of dialogues."
-    args_schema: Type[BaseModel] = TTSInput
-
-    def _run(self, input_file: str, output_file: str):
+    def _cleanup_temp_files(self):
+        """Clean up temporary audio files."""
         try:
-            # Ensure Recordings directory exists
-            os.makedirs("TTS/Recordings", exist_ok=True)
+            for file in os.listdir(self.temp_dir):
+                os.remove(os.path.join(self.temp_dir, file))
+        except Exception as e:
+            logger.warning(f"Service.py: Failed to cleanup temp files: {str(e)}")
+
+    def generate_audio(self, input_file: str, output_file: str) -> str:
+        """
+        Generate audio from a podcast script JSON file.
+        
+        Args:
+            input_file (str): Path to the JSON script file
+            output_file (str): Path to save the generated audio file
             
-            # Instantiate the TTS service
-            tts = BarkTTS()
-
-            voice_presets = {
-                "host": "v2/en_speaker_6",
-                "guest": "v2/en_speaker_9"
-            }
-
+        Returns:
+            str: Path to the generated audio file
+            
+        Raises:
+            ValueError: If script format is invalid
+            FileNotFoundError: If input file doesn't exist
+            Exception: For other errors
+        """
+        try:
+            logger.info("Service.py: Starting TTS Service")
+            
+            # Validate input file
+            if not os.path.exists(input_file):
+                logger.error(f"Service.py: Input file not found: {input_file}")
+                raise FileNotFoundError(f"Input file not found: {input_file}")
+            
+            # Ensure output directory exists
+            os.makedirs(os.path.dirname(output_file), exist_ok=True)
+            
+            # Read and validate script
             with open(input_file, 'r', encoding='utf-8') as f:
                 script = json.load(f)
-
+                
+            if not script or not isinstance(script, list):
+                logger.error("Service.py: Invalid script format")
+                raise ValueError("Invalid script format")
+            
             # Generate audio segments
             final_audio = []
-            for line in script:
-                speaker = line["speaker"].lower()  # Convert to lowercase for consistency
-                if speaker not in voice_presets:
-                    raise ValueError(f"Unknown speaker: {speaker}. Must be one of: {list(voice_presets.keys())}")
+            total_lines = len(script)
+            
+            for i, line in enumerate(script, 1):
+                logger.info(f"Service.py: Processing line {i}/{total_lines}")
+                
+                speaker = line["speaker"].lower()
+                if speaker not in self.voice_presets:
+                    logger.error(f"Service.py: Unknown speaker: {speaker}")
+                    raise ValueError(f"Unknown speaker: {speaker}")
                 
                 text = line["text"]
-                voice = voice_presets[speaker]
-
-                sr, audio = tts.long_form_synthesize(text, voice)
+                if not text or not text.strip():
+                    logger.warning(f"Service.py: Empty text for speaker {speaker}, skipping")
+                    continue
+                
+                voice = self.voice_presets[speaker]
+                sr, audio = self.tts.long_form_synthesize(text, voice)
                 final_audio.append(audio)
+                final_audio.append(np.zeros(int(0.65 * sr)))
 
-                final_audio.append(np.zeros(int(0.65 * sr)))  # silence
+            if not final_audio:
+                logger.error("Service.py: No valid audio segments generated")
+                raise ValueError("No valid audio segments generated")
 
-            # Concatenate and save final podcast audio
+            # Combine and normalize audio
             podcast_audio = np.concatenate(final_audio)
-
-            # Normalize audio to prevent clipping
             max_value = np.max(np.abs(podcast_audio))
             if max_value > 1.0:
                 podcast_audio = podcast_audio / max_value
 
-            podcast_file = "output/Recordings/podcast.wav"
-            sf.write(podcast_file, podcast_audio, sr)
-
-            if not os.path.exists(podcast_file):
-                raise FileNotFoundError(f"Failed to save podcast file at {podcast_file}")
-
-            return podcast_audio
+            # Save the audio file
+            sf.write(output_file, podcast_audio, sr)
+            logger.info(f"Service.py: Audio saved to: {output_file}")
+            
+            # Cleanup
+            self._cleanup_temp_files()
+            
+            return output_file
             
         except Exception as e:
+            logger.error(f"Service.py: Error in TTS service: {str(e)}")
+            self._cleanup_temp_files()  # Cleanup on error
             raise Exception(f"Error in TTS service: {str(e)}")
